@@ -646,11 +646,15 @@ export default function App() {
           </div>
         )}
 
-        {/* Loading */}
-        {loading&&!data&&(
-          <div style={{...card(),padding:"32px",textAlign:"center",marginBottom:12}}>
-            <div style={{color:"#3a3d48",fontSize:12,marginBottom:4}}>Fetching {symbol}…</div>
-            <div style={{color:"#2a2d35",fontSize:10}}>Backend may take 10–15s to wake up on first request</div>
+        {/* Loading — only show on chart tab first load, as a small inline spinner not a big box */}
+        {loading&&!data&&activeTab==="chart"&&(
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+            marginBottom:10,background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:8}}>
+            <div style={{width:14,height:14,border:"2px solid #1e4070",
+              borderTop:"2px solid #4a9af0",borderRadius:"50%",
+              animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+            <span style={{fontSize:11,color:"#3a3d48"}}>Fetching {symbol} from Dukascopy…</span>
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
 
