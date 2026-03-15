@@ -5,7 +5,17 @@ import {
 } from "recharts";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY"];
+const SYMBOLS = [
+  { id: "XAUUSD",    label: "Gold",    group: "Commodities" },
+  { id: "XAGUSD",    label: "Silver",  group: "Commodities" },
+  { id: "USOUSD",    label: "Oil",     group: "Commodities" },
+  { id: "NATGASUSD", label: "Gas",     group: "Commodities" },
+  { id: "EURUSD",    label: "EUR/USD", group: "Forex" },
+  { id: "GBPUSD",    label: "GBP/USD", group: "Forex" },
+  { id: "USDJPY",    label: "USD/JPY", group: "Forex" },
+  { id: "BTCUSD",    label: "Bitcoin", group: "Crypto" },
+  { id: "SPXUSD",    label: "S&P 500", group: "Indices" },
+];
 const TIMEFRAMES = [
   { label: "1m",  seconds: 60 },
   { label: "5m",  seconds: 300 },
@@ -324,15 +334,18 @@ export default function App() {
         </div>
 
         {/* Symbols */}
-        <div style={{ display: "flex", gap: 5 }}>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           {SYMBOLS.map(s => (
-            <button key={s} onClick={() => setSymbol(s)} style={{
-              background: s === symbol ? "#1e3a5f" : "transparent",
-              border: `1px solid ${s === symbol ? "#2a5a9f" : "#1e2028"}`,
-              color: s === symbol ? "#60a8f8" : "#55575f",
+            <button key={s.id} onClick={() => setSymbol(s.id)} style={{
+              background: s.id === symbol ? "#1e3a5f" : "transparent",
+              border: `1px solid ${s.id === symbol ? "#2a5a9f" : "#1e2028"}`,
+              color: s.id === symbol ? "#60a8f8" : "#55575f",
               borderRadius: 6, padding: "4px 11px", fontSize: 11,
               cursor: "pointer", fontFamily: "'JetBrains Mono', monospace",
-            }}>{s}</button>
+            }}>
+              <span style={{ fontSize: 9, color: s.id === symbol ? "#3a7aB0" : "#2a2d35", display: "block", lineHeight: 1, marginBottom: 1 }}>{s.group}</span>
+              {s.label}
+            </button>
           ))}
         </div>
 
