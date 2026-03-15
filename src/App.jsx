@@ -529,16 +529,30 @@ export default function App() {
   const [showAbs,     setShowAbs]     = useState(true);
   const [corrData,    setCorrData]    = useState(null);
   const [corrLoading, setCorrLoading] = useState(false);
+  const [fpData,      setFpData]      = useState(null);
+  const [fpLoading,   setFpLoading]   = useState(false);
   const timerRef=useRef(null);
 
   const fetchData=useCallback(async()=>{
     setLoading(true); setError(null);
+    // Use AbortController for timeout — Railway free tier can be slow
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000); // 25s timeout
     try {
-      const r=await fetch(`${API_BASE}/api/orderflow/${symbol}?hours_back=${hoursBack}&timeframe=${timeframe}&include_heatmap=true`);
+      const r=await fetch(
+        `${API_BASE}/api/orderflow/${symbol}?hours_back=${hoursBack}&timeframe=${timeframe}`,
+        { signal: ctrl.signal }
+      );
+      clearTimeout(timer);
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
       const j=await r.json();
       if(j.error) throw new Error(j.error);
       setData(j); setLastFetch(new Date());
-    } catch(e){ setError(e.message); } finally{ setLoading(false); }
+    } catch(e){
+      clearTimeout(timer);
+      if (e.name === "AbortError") setError("Request timed out — Railway backend may be waking up. Try again in 10 seconds.");
+      else setError(e.message);
+    } finally{ setLoading(false); }
   },[symbol,hoursBack,timeframe]);
 
   const fetchCorr=useCallback(async()=>{
@@ -550,6 +564,15 @@ export default function App() {
     } catch(e){ console.error(e); } finally{ setCorrLoading(false); }
   },[]);
 
+  const fetchFootprint=useCallback(async()=>{
+    setFpLoading(true);
+    try {
+      const r=await fetch(`${API_BASE}/api/footprint/${symbol}?hours_back=2&timeframe=${timeframe}&num_candles=30`);
+      const j=await r.json();
+      if (!j.error) setFpData(j);
+    } catch(e){ console.error(e); } finally{ setFpLoading(false); }
+  },[symbol,timeframe]);
+
   useEffect(()=>{ fetchData(); },[fetchData]);
   useEffect(()=>{
     if(autoRefresh) timerRef.current=setInterval(fetchData,60_000);
@@ -557,8 +580,9 @@ export default function App() {
     return()=>clearInterval(timerRef.current);
   },[autoRefresh,fetchData]);
 
-  // Auto-load correlation when tab opens
+  // Auto-load when tabs open
   useEffect(()=>{ if(activeTab==="corr"&&!corrData) fetchCorr(); },[activeTab]);
+  useEffect(()=>{ if(activeTab==="footprint") fetchFootprint(); },[activeTab,symbol,timeframe]);
 
   const sum=data?.summary||{}, candles=data?.candles||[];
   const profile=data?.volume_profile||[], sess=data?.session_stats||{};
@@ -647,8 +671,14 @@ export default function App() {
       <div style={{padding:"14px 18px"}}>
         {error&&(
           <div style={{background:"#1a0d0d",border:"1px solid #4a1a1a",borderRadius:8,
-            padding:"12px 16px",marginBottom:14,color:"#f06060",fontSize:13}}>
-            ⚠ {error}
+            padding:"12px 16px",marginBottom:14,color:"#f06060",fontSize:13,
+            display:"flex",alignItems:"center",gap:12}}>
+            <span>⚠ {error}</span>
+            <button onClick={fetchData} style={{marginLeft:"auto",background:"#2a1010",
+              border:"1px solid #6a2020",color:"#f08080",borderRadius:5,
+              padding:"4px 12px",fontSize:11,cursor:"pointer",flexShrink:0}}>
+              ↻ Retry
+            </button>
           </div>
         )}
 
@@ -663,6 +693,15 @@ export default function App() {
             <StatCard label="Spikes"      value={sum.spike_count??0} sub="Vol anomalies" accent={sum.spike_count>0?"#f08040":"#55575f"} />
             <StatCard label="Divergences" value={sum.divergence_count??0} sub="Delta vs price" accent={sum.divergence_count>0?"#f06060":"#55575f"} />
             <StatCard label="Absorptions" value={sum.absorption_count??0} sub="High vol·low rng" accent={sum.absorption_count>0?"#a060f0":"#55575f"} />
+          </div>
+        )}
+
+        {/* Loading skeleton */}
+        {loading&&!data&&(
+          <div style={{background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:12,
+            padding:"40px",textAlign:"center",marginBottom:14}}>
+            <div style={{color:"#3a3d48",fontSize:13,marginBottom:8}}>Fetching {symbol} data from Dukascopy…</div>
+            <div style={{color:"#2a2d35",fontSize:11}}>Railway backend may take 10–15s to wake up on first request</div>
           </div>
         )}
 
@@ -743,13 +782,24 @@ export default function App() {
         )}
 
         {/* ── FOOTPRINT TAB ── */}
-        {data&&activeTab==="footprint"&&(
+        {activeTab==="footprint"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:12,padding:"14px"}}>
-              <SH title="Footprint Candles" sub="Buy vol (green left) vs Sell vol (red right) at each price level · last 30 candles · delta in centre"/>
-              <div style={{height:420,marginTop:8}}>
-                <FootprintChart candles={candles}/>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                <SH title="Footprint Candles" sub="Buy vol (green left) vs Sell vol (red right) · last 30 candles · delta in centre"/>
+                <button onClick={fetchFootprint} disabled={fpLoading} style={{
+                  marginLeft:"auto",background:"#1a2f4a",border:"1px solid #1e4070",
+                  color:fpLoading?"#3a5070":"#4a9af0",borderRadius:6,
+                  padding:"5px 12px",fontSize:11,cursor:fpLoading?"not-allowed":"pointer",
+                }}>{fpLoading?"Loading…":"↻ Reload"}</button>
               </div>
+              {fpLoading && <div style={{color:"#3a3d48",fontSize:13,padding:"20px"}}>Fetching footprint data…</div>}
+              {!fpLoading&&fpData&&fpData.candles&&(
+              <div style={{height:420,marginTop:4}}>
+                <FootprintChart candles={fpData.candles}/>
+              </div>
+              )}
+              {!fpLoading&&!fpData&&<div style={{color:"#3a3d48",fontSize:13,padding:"20px"}}>Click Reload to load footprint data.</div>}
             </div>
             <div style={{background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:12,padding:"14px"}}>
               <SH title="How to read footprint candles"/>
@@ -772,7 +822,7 @@ export default function App() {
         )}
 
         {/* ── HEATMAP TAB ── */}
-        {data&&activeTab==="heatmap"&&(
+        {activeTab==="heatmap"&&data&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:12,padding:"14px"}}>
               <SH title="Liquidity Heatmap" sub="X = time · Y = price · Color intensity = volume concentration"/>
