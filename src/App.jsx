@@ -305,11 +305,12 @@ function FootprintChart({ candles }) {
 }
 
 // ─── Liquidity Heatmap ───────────────────────────────────────────────────────
-function LiquidityHeatmap({ heatmap, candles }) {
+function LiquidityHeatmap({ cells, minPrice, maxPrice }) {
   const ref=useRef(null);
 
   useEffect(()=>{
-    const cv=ref.current; if(!cv||!heatmap.length) return;
+    const cv=ref.current; if(!cv||!cells||!cells.length) return;
+    const heatmap=cells;
     const dpr=window.devicePixelRatio||1,W=cv.offsetWidth,H=cv.offsetHeight;
     cv.width=W*dpr; cv.height=H*dpr;
     const ctx=cv.getContext("2d"); ctx.scale(dpr,dpr);
@@ -531,6 +532,8 @@ export default function App() {
   const [corrLoading, setCorrLoading] = useState(false);
   const [fpData,      setFpData]      = useState(null);
   const [fpLoading,   setFpLoading]   = useState(false);
+  const [hmData,      setHmData]      = useState(null);
+  const [hmLoading,   setHmLoading]   = useState(false);
   const timerRef=useRef(null);
 
   const fetchData=useCallback(async()=>{
@@ -573,6 +576,15 @@ export default function App() {
     } catch(e){ console.error(e); } finally{ setFpLoading(false); }
   },[symbol,timeframe]);
 
+  const fetchHeatmap=useCallback(async()=>{
+    setHmLoading(true);
+    try {
+      const r=await fetch(`${API_BASE}/api/heatmap/${symbol}?hours_back=2&timeframe=${timeframe}`);
+      const j=await r.json();
+      if (!j.error) setHmData(j);
+    } catch(e){ console.error(e); } finally{ setHmLoading(false); }
+  },[symbol,timeframe]);
+
   useEffect(()=>{ fetchData(); },[fetchData]);
   useEffect(()=>{
     if(autoRefresh) timerRef.current=setInterval(fetchData,60_000);
@@ -583,10 +595,11 @@ export default function App() {
   // Auto-load when tabs open
   useEffect(()=>{ if(activeTab==="corr"&&!corrData) fetchCorr(); },[activeTab]);
   useEffect(()=>{ if(activeTab==="footprint") fetchFootprint(); },[activeTab,symbol,timeframe]);
+  useEffect(()=>{ if(activeTab==="heatmap") fetchHeatmap(); },[activeTab,symbol,timeframe]);
 
   const sum=data?.summary||{}, candles=data?.candles||[];
   const profile=data?.volume_profile||[], sess=data?.session_stats||{};
-  const heatmap=data?.heatmap||[], isBull=sum.bias==="bullish";
+  const isBull=sum.bias==="bullish";
 
   const deltaData=candles.slice(-80).map(c=>({
     time:fmtTs(c.time),delta:c.delta,cum:c.cum_delta,spike:c.is_spike,div:c.divergence,
@@ -822,13 +835,24 @@ export default function App() {
         )}
 
         {/* ── HEATMAP TAB ── */}
-        {activeTab==="heatmap"&&data&&(
+        {activeTab==="heatmap"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:12,padding:"14px"}}>
-              <SH title="Liquidity Heatmap" sub="X = time · Y = price · Color intensity = volume concentration"/>
-              <div style={{height:440,marginTop:8}}>
-                <LiquidityHeatmap heatmap={heatmap} candles={candles}/>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                <SH title="Liquidity Heatmap" sub="X = time · Y = price · Color intensity = volume concentration"/>
+                <button onClick={fetchHeatmap} disabled={hmLoading} style={{
+                  marginLeft:"auto",background:"#1a2f4a",border:"1px solid #1e4070",
+                  color:hmLoading?"#3a5070":"#4a9af0",borderRadius:6,
+                  padding:"5px 12px",fontSize:11,cursor:hmLoading?"not-allowed":"pointer",
+                }}>{hmLoading?"Loading…":"↻ Reload"}</button>
               </div>
+              {hmLoading&&<div style={{color:"#3a3d48",fontSize:13,padding:"20px"}}>Fetching heatmap data…</div>}
+              {!hmLoading&&hmData&&hmData.cells&&(
+              <div style={{height:440,marginTop:4}}>
+                <LiquidityHeatmap cells={hmData.cells} minPrice={hmData.min_price} maxPrice={hmData.max_price}/>
+              </div>
+              )}
+              {!hmLoading&&!hmData&&<div style={{color:"#3a3d48",fontSize:13,padding:"20px"}}>Click Reload to fetch heatmap data.</div>}
             </div>
             <div style={{background:"#0d0f14",border:"1px solid #1a1c24",borderRadius:12,padding:"14px"}}>
               <SH title="How to read the heatmap"/>
