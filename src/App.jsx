@@ -37,6 +37,19 @@ const fmtV   = n => n==null?"—":Number(n).toFixed(1);
 const fmtTs  = e => new Date(e*1000).toUTCString().slice(17,22);
 const isMob  = () => window.innerWidth < 768;
 
+// Smart vol formatter for footprint — shows meaningful digits regardless of scale
+const fmtFP  = n => {
+  if(n==null||isNaN(n)) return "—";
+  const v = Number(n);
+  if(v === 0) return "0";
+  if(v >= 1000) return (v/1000).toFixed(1)+"k";
+  if(v >= 10)   return v.toFixed(0);
+  if(v >= 1)    return v.toFixed(1);
+  if(v >= 0.1)  return v.toFixed(2);
+  if(v >= 0.01) return v.toFixed(3);
+  return v.toFixed(4);
+};
+
 // ─── useCanvas hook ───────────────────────────────────────────────────────────
 function useCanvas(draw, deps) {
   const ref = useRef(null);
@@ -179,11 +192,11 @@ function CandleChart({ candles, summary, showSessions, showDiv, showAbs }) {
         <div style={{position:"absolute",left:Math.min(tip.x+10,200),top:Math.max(4,tip.y-10),
           background:"#0d0f14",border:"1px solid #2a2d35",borderRadius:6,
           padding:"7px 10px",fontSize:11,color:"#c8cad0",pointerEvents:"none",
-          zIndex:10,fontFamily:"monospace",minWidth:160,maxWidth:200}}>
-          <div style={{color:"#55575f",marginBottom:2}}>{fmtTs(tip.c.time)} · {SC[tip.c.session||"off"]?.label}</div>
-          <div>O{fmt(tip.c.open)} H{fmt(tip.c.high)}</div>
-          <div>L{fmt(tip.c.low)} C{fmt(tip.c.close)}</div>
-          <div style={{color:"#f0c04a"}}>Vol {fmtV(tip.c.volume)}</div>
+          zIndex:10,fontFamily:"monospace",minWidth:170,maxWidth:210}}>
+          <div style={{color:"#7a7d90",marginBottom:3,fontSize:10}}>{fmtTs(tip.c.time)} · {SC[tip.c.session||"off"]?.label}</div>
+          <div style={{color:"#c8d0e0"}}>O <b>{fmt(tip.c.open)}</b> H <b style={{color:"#4adc8a"}}>{fmt(tip.c.high)}</b></div>
+          <div style={{color:"#c8d0e0"}}>L <b style={{color:"#f06060"}}>{fmt(tip.c.low)}</b> C <b>{fmt(tip.c.close)}</b></div>
+          <div style={{color:"#f0c04a",marginTop:2}}>Vol {fmtV(tip.c.volume)}</div>
           <div style={{color:tip.c.delta>=0?"#4adc8a":"#f06060"}}>Δ {fmt(tip.c.delta)}</div>
           {tip.c.is_spike&&<div style={{color:"#f08040"}}>⚡ {tip.c.spike_ratio}×</div>}
           {tip.c.divergence&&<div style={{color:tip.c.divergence==="bearish"?"#f06060":"#4adc8a"}}>{tip.c.divergence==="bearish"?"▼ Bear":"▲ Bull"} div</div>}
@@ -218,15 +231,15 @@ function VolumeBars({ candles }) {
 function FootprintChart({ footprint }) {
   const ref = useCanvas((ctx,W,H) => {
     if(!footprint?.length) return;
-    const shown=footprint.slice(-30);
+    const shown=footprint.slice(-20);
     const allLevels=new Set(shown.flatMap(c=>c.levels.map(l=>l.price)));
     const prices=Array.from(allLevels).sort((a,b)=>b-a);
     if(!prices.length) return;
 
     const PL=isMob()?50:65, PR=8, PT=16, PB=20;
     const cW=W-PL-PR, cH=H-PT-PB;
-    const colW=Math.max(18,Math.floor(cW/shown.length));
-    const rowH=Math.max(8,Math.floor(cH/Math.min(prices.length,30)));
+    const colW=Math.max(28,Math.floor(cW/shown.length));
+    const rowH=Math.max(14,Math.floor(cH/Math.min(prices.length,24)));
 
     const visP=prices.slice(0,Math.floor(cH/rowH));
     const maxVol=Math.max(...shown.flatMap(c=>c.levels.map(l=>l.buy+l.sell)));
@@ -256,16 +269,21 @@ function FootprintChart({ footprint }) {
 
         // Text (buy/sell) — only if cell is wide enough
         if(colW>=20&&rowH>=10){
-          ctx.fillStyle="rgba(255,255,255,0.9)";
-          ctx.font=`bold ${Math.min(8,rowH-2)}px monospace`;
+          const buyTxt=fmtFP(l.buy), sellTxt=fmtFP(l.sell);
+          const fs=Math.max(7,Math.min(10,rowH-3));
+          ctx.font=`bold ${fs}px monospace`;
           ctx.textAlign="center";
           const mid=x+colW/2;
-          if(rowH>=14){
-            ctx.fillText(fmtV(l.buy),mid,y+rowH*0.38);
-            ctx.fillStyle="rgba(180,180,180,0.7)";
-            ctx.fillText(fmtV(l.sell),mid,y+rowH*0.72);
-          } else {
-            ctx.fillText(l.delta>=0?fmtV(l.buy):fmtV(l.sell),mid,y+rowH*0.6);
+          if(rowH>=16){
+            // Two rows: buy on top in bright white, sell below in muted
+            ctx.fillStyle="rgba(255,255,255,0.95)";
+            ctx.fillText(buyTxt,mid,y+rowH*0.34);
+            ctx.fillStyle="rgba(160,200,160,0.75)";
+            ctx.fillText(sellTxt,mid,y+rowH*0.70);
+          } else if(rowH>=10){
+            // Single row: show whichever side is dominant
+            ctx.fillStyle="rgba(255,255,255,0.95)";
+            ctx.fillText(l.delta>=0?buyTxt:sellTxt,mid,y+rowH*0.62);
           }
         }
       });
@@ -442,17 +460,17 @@ const Toggle=({label,value,onChange,color="#4a9af0"})=>(
 
 const StatCard=({label,value,sub,accent})=>(
   <div style={{background:"#13151c",border:"1px solid #1e2028",borderRadius:10,
-    padding:"10px 12px",flex:1,minWidth:100}}>
-    <div style={{fontSize:9,color:"#55575f",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:3}}>{label}</div>
-    <div style={{fontSize:16,fontWeight:600,color:accent||"#e2e4ec",fontFamily:"monospace"}}>{value}</div>
-    {sub&&<div style={{fontSize:9,color:"#55575f",marginTop:2}}>{sub}</div>}
+    padding:"11px 14px",flex:1,minWidth:110}}>
+    <div style={{fontSize:10,color:"#55575f",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>{label}</div>
+    <div style={{fontSize:18,fontWeight:600,color:accent||"#e2e4ec",fontFamily:"monospace"}}>{value}</div>
+    {sub&&<div style={{fontSize:10,color:"#6a6d78",marginTop:3}}>{sub}</div>}
   </div>
 );
 
 const SH=({title,sub})=>(
-  <div style={{marginBottom:10}}>
-    <span style={{fontSize:11,fontWeight:600,color:"#7a7d88",letterSpacing:"0.1em",textTransform:"uppercase"}}>{title}</span>
-    {sub&&<span style={{fontSize:10,color:"#3a3d48",marginLeft:8}}>{sub}</span>}
+  <div style={{marginBottom:12}}>
+    <span style={{fontSize:12,fontWeight:600,color:"#9a9daa",letterSpacing:"0.1em",textTransform:"uppercase"}}>{title}</span>
+    {sub&&<span style={{fontSize:11,color:"#4a4d58",marginLeft:10}}>{sub}</span>}
   </div>
 );
 
@@ -638,7 +656,7 @@ export default function App() {
         {/* Error */}
         {error&&(
           <div style={{background:"#1a0d0d",border:"1px solid #4a1a1a",borderRadius:8,
-            padding:"10px 14px",marginBottom:12,color:"#f06060",fontSize:12,
+            padding:"12px 16px",marginBottom:12,color:"#f07070",fontSize:13,
             display:"flex",alignItems:"center",gap:10}}>
             <span style={{flex:1}}>⚠ {error}</span>
             <button onClick={fetchData} style={{background:"#2a1010",border:"1px solid #6a2020",
@@ -678,9 +696,9 @@ export default function App() {
           {TABS.map(({key,label})=>(
             <button key={key} onClick={()=>setActiveTab(key)} style={{
               background:"transparent",border:"none",
-              borderBottom:`2px solid ${activeTab===key?"#4a9af0":"transparent"}`,
-              color:activeTab===key?"#e2e4ec":"#3a3d48",
-              padding:"7px 12px",fontSize:11,cursor:"pointer",
+              borderBottom:`2px solid ${activeTab===key?"#60a8f8":"transparent"}`,
+              color:activeTab===key?"#f0f2ff":"#55575f",
+              padding:"8px 14px",fontSize:12,cursor:"pointer",
               fontWeight:activeTab===key?600:400,marginBottom:-1,flexShrink:0,
             }}>{label}</button>
           ))}
@@ -871,7 +889,7 @@ export default function App() {
                   background:d.divergence==="bearish"?"#1a0808":"#081a0a",
                   border:`1px solid ${d.divergence==="bearish"?"#4a1010":"#104a18"}`,
                   borderLeft:`3px solid ${d.divergence==="bearish"?"#f06060":"#4adc8a"}`,
-                  borderRadius:7,padding:"8px 11px",fontSize:11,marginBottom:5,flexWrap:"wrap",gap:6}}>
+                  borderRadius:7,padding:"9px 13px",fontSize:12,marginBottom:6,flexWrap:"wrap",gap:8}}>
                   <span style={{color:d.divergence==="bearish"?"#f06060":"#4adc8a",fontWeight:600}}>
                     {d.divergence==="bearish"?"▼ Bear":"▲ Bull"}
                   </span>
